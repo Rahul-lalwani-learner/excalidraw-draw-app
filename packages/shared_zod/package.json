@@ -1,5 +1,5 @@
 {
-  "name": "http-backend",
+  "name": "@repo/zod",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,6 @@
     "dev": "npm run build && npm run start"
   },
   "devDependencies": {
-    "@repo/db": "workspace:*",
     "@repo/typescript-config": "workspace:*"
   },
   "keywords": [],
@@ -16,14 +15,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@repo/zod": "workspace:*",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "@types/jsonwebtoken": "^9.0.10",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
     "typescript": "^5.8.3",
     "zod": "^3.25.75"
+  },
+  "exports": {
+    ".": "./src/index.ts"
   }
 }
