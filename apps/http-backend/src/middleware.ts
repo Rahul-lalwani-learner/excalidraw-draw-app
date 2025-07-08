@@ -3,8 +3,6 @@ import jwt from "jsonwebtoken";
 import { configDotenv } from "dotenv";
 configDotenv();
 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-here";
-
 // Extend Request interface to include userId
 declare global {
     namespace Express {
@@ -21,6 +19,15 @@ interface JWTPayload {
 
 export function middleware(req: Request, res: Response, next: NextFunction): void {
     try {
+
+        if(!process.env.JWT_SECRET){
+            console.log("Middleware: NO JWT_SECRET");
+            res.status(401).json({
+                message: "NO JWT_SECRET"
+            });
+            return;
+        }
+
         const authHeader = req.headers['authorization'];
         
         if (!authHeader) {
@@ -44,7 +51,8 @@ export function middleware(req: Request, res: Response, next: NextFunction): voi
             return;
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+        
+        const decoded = jwt.verify(token, process.env.JWT_SECRET) as JWTPayload;
 
         if (decoded && decoded.userId) {
             req.userId = decoded.userId;

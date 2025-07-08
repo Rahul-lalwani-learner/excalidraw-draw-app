@@ -8,7 +8,6 @@ import { configDotenv } from "dotenv"
 configDotenv();
 
 const port = 3001; 
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-here";
 
 // Debug log to verify JWT_SECRET is loaded
 console.log("JWT_SECRET loaded:", process.env.JWT_SECRET ? "✅ Yes" : "❌ No");
@@ -64,6 +63,14 @@ app.post("/signin", async (req, res) => {
             return;
         }
 
+        if(!process.env.JWT_SECRET){
+            console.log("NO JWT_SECRET");
+            res.status(401).json({
+                message: "NO JWT_SECRET"
+            });
+            return;
+        }
+
         const { email, password } = signinResponse.data;
         try{
             const user = await prisma.user.findFirst({
@@ -75,7 +82,7 @@ app.post("/signin", async (req, res) => {
                 if(user.password == password){
                     const token = jwt.sign(
                         { userId: user.id, email: user.email },
-                        JWT_SECRET,
+                        process.env.JWT_SECRET,
                         { expiresIn: '24h' }
                     );
 
