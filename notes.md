@@ -383,3 +383,125 @@ Join our Discord to ask questions, talk to the community, and get active support
 Subscribe on YouTube for tutorials, demos, and streams.
 Engage on GitHub by starring the repository, reporting issues, or contributing to an issue.
 We genuinely value your involvement and look forward to having you as part of our community!
+
+## Single .env File Setup for Turborepo
+
+Instead of having separate `.env` files in each package/app, you can use a single root `.env` file that's shared across the entire monorepo. Here's how to set it up:
+
+### 1. Install dotenv-cli
+First, install `dotenv-cli` as a dev dependency in the root package.json:
+
+```bash
+pnpm add -D dotenv-cli -w
+```
+
+### 2. Create Root .env File
+Create a single `.env` file in the root directory with all your environment variables:
+
+```env
+# Shared environment variables for the monorepo
+
+# Database configuration
+DATABASE_URL="your-postgresql-connection-string"
+
+# JWT Secret for authentication
+JWT_SECRET="your-super-secret-jwt-key-change-this-in-production"
+```
+
+### 3. Update Root package.json Scripts
+Modify your root `package.json` scripts to use `dotenv --` prefix:
+
+```json
+{
+  "scripts": {
+    "build": "dotenv -- turbo run build",
+    "dev": "dotenv -- turbo run dev",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types"
+  }
+}
+```
+
+### 4. Update turbo.json
+Add environment variables to both `build` and `dev` tasks in `turbo.json`:
+
+```json
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "^db:generate"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"], 
+      "env": ["DATABASE_URL", "JWT_SECRET"]
+    },
+    "dev": {
+      "dependsOn": ["^db:generate"],
+      "cache": false,
+      "persistent": true,
+      "env": ["DATABASE_URL", "JWT_SECRET"]
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false,
+      "persistent": true 
+    },
+    "db:deploy": {
+      "cache": false
+    }
+  }
+}
+```
+
+### 5. Add configDotenv() in Individual Services (Optional but Recommended)
+For additional robustness, add `configDotenv()` in services that need environment variables:
+
+```typescript
+// In your backend services (http-backend, ws-backend, etc.)
+import { configDotenv } from "dotenv";
+configDotenv();
+
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-value";
+```
+
+### 6. Create .env.example Template
+Create a `.env.example` file as a template for other developers:
+
+```env
+# Copy this file to .env and fill in the actual values
+
+# Database configuration
+DATABASE_URL="your-database-connection-string-here"
+
+# JWT Secret for authentication (use a strong, random string in production)
+JWT_SECRET="your-super-secret-jwt-key-here"
+```
+
+### Benefits of This Approach:
+- ✅ **Single source of truth** for environment variables
+- ✅ **Consistent across all packages** and apps
+- ✅ **Works in both dev and build** environments
+- ✅ **Easier to manage** - no duplicate env vars
+- ✅ **Better for CI/CD** - one file to configure
+
+### How It Works:
+1. `dotenv-cli` loads the root `.env` file before running Turbo commands
+2. Turbo passes the environment variables to all tasks based on the `env` array
+3. Individual services can access `process.env.VARIABLE_NAME` directly
+4. `configDotenv()` provides additional fallback for services running independently
+
+### Usage:
+```bash
+# Development (loads .env automatically)
+pnpm run dev
+
+# Build (loads .env automatically)  
+pnpm run build
+
+# Environment variables are available in all apps/packages
+```
+
+--
