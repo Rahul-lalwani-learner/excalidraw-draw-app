@@ -1,5 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { configDotenv } from "dotenv";
+configDotenv();
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-here";
 
@@ -22,6 +24,7 @@ export function middleware(req: Request, res: Response, next: NextFunction): voi
         const authHeader = req.headers['authorization'];
         
         if (!authHeader) {
+            console.log("Middleware: No authorization header provided");
             res.status(401).json({
                 message: "No authorization header provided"
             });
@@ -33,20 +36,44 @@ export function middleware(req: Request, res: Response, next: NextFunction): voi
             ? authHeader.slice(7) 
             : authHeader;
 
+        if (!token) {
+            console.log("Middleware: Empty token after extraction");
+            res.status(401).json({
+                message: "Invalid authorization format"
+            });
+            return;
+        }
+
         const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
         if (decoded && decoded.userId) {
             req.userId = decoded.userId;
+            console.log("Middleware: Authentication successful for user:", decoded.userId);
             next(); // Continue to the next middleware/route handler
         } else {
+            console.log("Middleware: Invalid token payload - missing userId");
             res.status(401).json({
                 message: "Invalid token payload"
             });
             return;
         }
     } catch (error) {
+        console.log("Middleware: JWT verification failed:", error instanceof Error ? error.message : "Unknown error");
+        
+        // Provide specific error messages based on JWT error types
+        let message = "Unauthorized - Invalid or expired token";
+        if (error instanceof Error) {
+            if (error.name === 'TokenExpiredError') {
+                message = "Token has expired";
+            } else if (error.name === 'JsonWebTokenError') {
+                message = "Invalid token signature";
+            } else if (error.name === 'NotBeforeError') {
+                message = "Token not active yet";
+            }
+        }
+        
         res.status(401).json({
-            message: "Unauthorized - Invalid or expired token",
+            message: message,
             error: error instanceof Error ? error.message : "Unknown error"
         });
         return;

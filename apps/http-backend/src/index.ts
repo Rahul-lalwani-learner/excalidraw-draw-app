@@ -4,12 +4,14 @@ import {prisma} from "@repo/db"
 import {userZodSchema} from "@repo/zod"
 import jwt from 'jsonwebtoken'
 import { middleware } from "./middleware"
+import { configDotenv } from "dotenv"
+configDotenv();
 
 const port = 3001; 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-here";
 
 // Debug log to verify JWT_SECRET is loaded
-console.log("JWT_SECRET loaded:", JWT_SECRET ? "✅ Yes" : "❌ No");
+console.log("JWT_SECRET loaded:", process.env.JWT_SECRET ? "✅ Yes" : "❌ No");
 
 const app = express(); 
 
