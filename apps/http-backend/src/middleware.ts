@@ -8,13 +8,14 @@ declare global {
     namespace Express {
         interface Request {
             userId?: string;
+            userName?: string;
         }
     }
 }
 
 interface JWTPayload {
     userId: string;
-    email: string;
+    userName: string;
 }
 
 export function middleware(req: Request, res: Response, next: NextFunction): void {
@@ -56,6 +57,7 @@ export function middleware(req: Request, res: Response, next: NextFunction): voi
 
         if (decoded && decoded.userId) {
             req.userId = decoded.userId;
+            req.userName = decoded.userName;
             console.log("Middleware: Authentication successful for user:", decoded.userId);
             next(); // Continue to the next middleware/route handler
         } else {

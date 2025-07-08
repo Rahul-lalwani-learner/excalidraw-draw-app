@@ -1,9 +1,10 @@
 import express from "express"
 import cors from "cors"
 import {prisma} from "@repo/db"
-import {userZodSchema} from "@repo/zod"
+import {userZodSchema, createRoomSchema} from "@repo/zod"
 import jwt from 'jsonwebtoken'
 import { middleware } from "./middleware"
+import bcrypt from "bcrypt"
 import { configDotenv } from "dotenv"
 configDotenv();
 
@@ -22,11 +23,12 @@ app.post("/signup", async (req, res) => {
     const zResponse = userZodSchema.safeParse(req.body); 
     if(zResponse.success){
         const {email, name, password}: typeof userZodSchema._type = req.body; 
+        const hashedPassword = await bcrypt.hash(password, 10);
         try{
             await prisma.user.create({
                 data: {
                     name: name, 
-                    password: password, 
+                    password: hashedPassword, 
                     email: email
                 }
             })
@@ -35,6 +37,12 @@ app.post("/signup", async (req, res) => {
             })
         }
         catch(e){
+            if ((e as any)?.code === "P2002") {
+                res.status(409).json({
+                    message: "User already exists"
+                });
+                return;
+            }
             res.status(500).json({
                 message: "Error adding User", 
                 error: e
@@ -79,9 +87,10 @@ app.post("/signin", async (req, res) => {
                 }
             })
             if(user){
-                if(user.password == password){
+                const isCorrectPassword = await bcrypt.compare(password, user.password);
+                if(isCorrectPassword){
                     const token = jwt.sign(
-                        { userId: user.id, email: user.email },
+                        { userId: user.id, userName: user.name },
                         process.env.JWT_SECRET,
                         { expiresIn: '24h' }
                     );
@@ -92,7 +101,7 @@ app.post("/signin", async (req, res) => {
                         token: `Bearer ${token}`,
                         user: {
                             id: user.id,
-                            Roomname: user.name,
+                            name: user.name,
                             email: user.email
                         }
                     })
@@ -124,36 +133,45 @@ app.post("/signin", async (req, res) => {
 })
 
 app.post("/room", middleware, async (req, res) => {
-    try {
-        const { Roomname } = req.body;
-        const userId = req.userId; // Available from middleware
+    const parsedData = createRoomSchema.safeParse(req.body);
+
+    if(!parsedData.success || !req.userId){
+        res.status(400).json({
+            message: "Zod Error or No userId", 
+            error: parsedData.error
+        })
+        return;
+    }
+
+    try{
+        const userId = req.userId;
+    
+        const room = await prisma.room.create({
+            data:{
+                slug: parsedData.data.name, 
+                adminId: userId
+            },
+        })
         
-        if (!Roomname) {
-            res.status(400).json({
-                message: "Room name is required"
+        res.json({
+            message: "Room Created!!",
+            roomId: room.id, 
+        })
+    }
+    catch(e){
+        if ((e as any)?.code === "P2002") {
+            res.status(409).json({
+                message: "Room already exists"
             });
             return;
         }
-
-        // TODO: Add room creation logic with Prisma
-        // For now, returning a mock response
-        const roomId = `room_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        
-        res.json({
-            message: "Room created successfully",
-            room: {
-                id: roomId,
-                Roomname: Roomname,
-                createdBy: userId,
-                createdAt: new Date().toISOString()
-            }
-        });
-    } catch (error) {
         res.status(500).json({
-            message: "Error creating room",
-            error: error instanceof Error ? error.message : "Unknown error"
-        });
+            message: "Error Creating Room", 
+            error: e
+        })
     }
+
+    
 })
 
 
