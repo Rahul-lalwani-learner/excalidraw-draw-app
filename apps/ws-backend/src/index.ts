@@ -42,6 +42,7 @@ interface ChatMessage {
     type: 'chat';
     room_id: string;
     message: string;
+    temp_id?: string; // For optimistic updates
 }
 
 // Union type for all possible message types
@@ -141,8 +142,20 @@ async function handleJoinRoom(userId: string, roomId: string, socket: WebSocket)
         }
         
         // Check if room exists in database
+        console.log("Attempting to find room with ID:", roomId, "Type:", typeof roomId);
+        const parsedRoomId = parseInt(roomId);
+        console.log("Parsed room ID:", parsedRoomId, "IsNaN:", isNaN(parsedRoomId));
+        
+        if (isNaN(parsedRoomId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Invalid room ID format'
+            }));
+            return;
+        }
+        
         const room = await prisma.room.findUnique({
-            where: { id: parseInt(roomId) },
+            where: { id: parsedRoomId },
             include: {
                 admin: true
             }
@@ -258,13 +271,14 @@ async function handleLeaveRoom(userId: string, roomId: string, socket: WebSocket
  * Sends message to all users in the specified room
  * Saves message to database before broadcasting
  */
-async function handleChatMessage(userId: string, roomId: string, message: string, socket: WebSocket): Promise<void> {
+async function handleChatMessage(userId: string, roomId: string, message: string, socket: WebSocket, tempId?: string): Promise<void> {
     try {
         // Check if user is in the room (in-memory check)
         if (!rooms[roomId] || !rooms[roomId].includes(userId)) {
             socket.send(JSON.stringify({
                 type: 'error',
-                message: 'You are not in this room'
+                message: 'You are not in this room',
+                temp_id: tempId
             }));
             return;
         }
@@ -274,14 +288,27 @@ async function handleChatMessage(userId: string, roomId: string, message: string
         if (!user) {
             socket.send(JSON.stringify({
                 type: 'error',
-                message: 'User not found'
+                message: 'User not found',
+                temp_id: tempId
             }));
             return;
         }
         
         // Verify room exists in database
+        console.log("Verifying room with ID:", roomId, "Type:", typeof roomId);
+        const parsedRoomId = parseInt(roomId);
+        console.log("Parsed room ID for chat:", parsedRoomId, "IsNaN:", isNaN(parsedRoomId));
+        
+        if (isNaN(parsedRoomId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Invalid room ID format'
+            }));
+            return;
+        }
+        
         const room = await prisma.room.findUnique({
-            where: { id: parseInt(roomId) }
+            where: { id: parsedRoomId }
         });
         
         if (!room) {
@@ -295,7 +322,7 @@ async function handleChatMessage(userId: string, roomId: string, message: string
         // Save chat message to database
         const chatRecord = await prisma.chat.create({
             data: {
-                roomId: parseInt(roomId),
+                roomId: parsedRoomId,
                 userId: userId,
                 message: message
             },
@@ -317,20 +344,41 @@ async function handleChatMessage(userId: string, roomId: string, message: string
             user_name: user.name,
             message: message,
             timestamp: chatRecord.id ? new Date().toISOString() : new Date().toISOString(),
-            chat_id: chatRecord.id // Include database ID for reference
+            chat_id: chatRecord.id, // Include database ID for reference
+            temp_id: tempId // Include temp_id for optimistic updates
         };
         
-        // Broadcast message to all users in the room (including sender)
-        broadcastToRoom(roomId, JSON.stringify(chatMessage), userId);
+        // Send confirmation to the sender with temp_id for optimistic update
+        if (tempId) {
+            socket.send(JSON.stringify(chatMessage));
+        }
+        
+        // Broadcast message to all other users in the room (without temp_id)
+        const broadcastMessage = {
+            type: 'chat',
+            room_id: roomId,
+            user_id: userId,
+            user_name: user.name,
+            message: message,
+            timestamp: chatRecord.id ? new Date().toISOString() : new Date().toISOString(),
+            chat_id: chatRecord.id
+        };
+        
+        broadcastToRoom(roomId, JSON.stringify(broadcastMessage), userId);
         
         console.log(`Chat message saved to DB and broadcast - User: ${userId}, Room: ${roomId}, Message: ${message}`);
         
     } catch (error) {
         console.error('Error in handleChatMessage:', error);
-        socket.send(JSON.stringify({
+        
+        // If we have a temp_id, send error with it so frontend can remove the optimistic message
+        const errorMessage = {
             type: 'error',
-            message: 'Internal server error while sending message'
-        }));
+            message: 'Internal server error while sending message',
+            temp_id: tempId
+        };
+        
+        socket.send(JSON.stringify(errorMessage));
     }
 }
 
@@ -351,13 +399,19 @@ wss.on('connection', (socket, request)=>{
     const queryParams = new URLSearchParams(url.split("?")[1]); 
     const token = queryParams.get('token'); 
     if(!token){
+        console.log("No token found in URL");
         socket.send("No token found in url") 
         socket.close();
         return;
     }
     
+    // Clean token - remove "Bearer " prefix if present
+    const cleanToken = token.replace(/^Bearer\s+/, '');
+    console.log("Received token (first 20 chars):", token.substring(0, 20) + "...");
+    console.log("Cleaned token (first 20 chars):", cleanToken.substring(0, 20) + "...");
+    
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+        const decoded = jwt.verify(cleanToken, JWT_SECRET) as JWTPayload;
         if(!decoded || !decoded.userId){
             socket.send("Invalid token payload")
             socket.close();
@@ -405,7 +459,7 @@ wss.on('connection', (socket, request)=>{
                     break;
                     
                 case 'chat':
-                    await handleChatMessage(currentUserId, message.room_id, message.message, socket);
+                    await handleChatMessage(currentUserId, message.room_id, message.message, socket, message.temp_id);
                     break;
                     
                 default:

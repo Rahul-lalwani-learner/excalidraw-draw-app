@@ -1,7 +1,7 @@
 import express from "express"
 import cors from "cors"
 import {prisma} from "@repo/db"
-import {userZodSchema, createRoomSchema} from "@repo/zod"
+import {userZodSchema, signinZodSchema, createRoomSchema} from "@repo/zod"
 import jwt from 'jsonwebtoken'
 import { middleware } from "./middleware"
 import bcrypt from "bcrypt"
@@ -58,18 +58,9 @@ app.post("/signup", async (req, res) => {
 })
 
 app.post("/signin", async (req, res) => {
-    const zResponse = userZodSchema.safeParse(req.body); 
-    if(zResponse.success){
-        const signinSchema = userZodSchema.pick({ email: true, password: true });
-        const signinResponse = signinSchema.safeParse(req.body);
+    const signinResponse = signinZodSchema.safeParse(req.body);
 
-        if (!signinResponse.success) {
-            res.status(400).json({
-                message: "Zod Error",
-                error: signinResponse.error
-            });
-            return;
-        }
+    if(signinResponse.success){
 
         if(!process.env.JWT_SECRET){
             console.log("NO JWT_SECRET");
@@ -127,7 +118,7 @@ app.post("/signin", async (req, res) => {
     else{
         res.status(400).json({
             message: "Zod Error", 
-            error: zResponse.error
+            error: signinResponse.error
         })
     }
 })
@@ -350,6 +341,48 @@ app.get("/room/:slug", middleware, async (req, res) => {
     }
 })
 
+app.get("/user/rooms", middleware, async (req, res) => {
+    try {
+        const userId = req.userId;
+
+        if (!userId) {
+            res.status(400).json({
+                message: "User ID is required"
+            });
+            return;
+        }
+
+        // Get all rooms where the user is admin
+        const rooms = await prisma.room.findMany({
+            where: { adminId: userId },
+            select: {
+                id: true,
+                slug: true,
+                adminId: true
+            },
+            orderBy: { id: 'desc' }
+        });
+
+        const roomsWithAdminFlag = rooms.map(room => ({
+            id: room.id.toString(),
+            slug: room.slug,
+            adminId: room.adminId,
+            isAdmin: true // All rooms returned are admin rooms
+        }));
+
+        res.json({
+            message: "Rooms retrieved successfully",
+            roomCount: roomsWithAdminFlag.length,
+            rooms: roomsWithAdminFlag
+        });
+
+    } catch (e) {
+        res.status(500).json({
+            message: "Error retrieving user rooms",
+            error: e
+        });
+    }
+})
 
 app.listen(port, ()=>{
     console.log(`Http-backend is listening to: http://localhost:${port}`)

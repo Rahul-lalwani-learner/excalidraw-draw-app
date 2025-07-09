@@ -1,11 +1,11 @@
 'use client'
 
-import { useAuth } from '../contexts/AuthContext'
-import { AuthForm } from '../components/AuthForm'
-import { Dashboard } from '../components/Dashboard'
+import { useAuth } from '../../contexts/AuthContext'
+import { Dashboard } from '../../components/Dashboard'
+import { AuthForm } from '../../components/AuthForm'
 import { useRouter } from 'next/navigation'
 
-export default function Home() {
+export default function DashboardPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
 
