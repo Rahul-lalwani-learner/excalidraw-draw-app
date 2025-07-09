@@ -1,13 +1,19 @@
 'use client'
 
 import { useAuth } from '../contexts/AuthContext'
-import { AuthForm } from '../components/AuthForm'
-import { Dashboard } from '../components/Dashboard'
+import { LandingPage } from '../components/LandingPage'
 import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 export default function Home() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.push('/dashboard')
+    }
+  }, [user, isLoading, router])
 
   if (isLoading) {
     return (
@@ -17,9 +23,13 @@ export default function Home() {
     )
   }
 
-  if (!user) {
-    return <AuthForm onSuccess={() => router.push('/dashboard')} />
+  if (user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-lg text-gray-600">Redirecting to dashboard...</div>
+      </div>
+    )
   }
 
-  return <Dashboard />
+  return <LandingPage />
 }
