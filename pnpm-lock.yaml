@@ -23,6 +23,9 @@ importers:
 
   apps/http-backend:
     dependencies:
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@repo/zod':
         specifier: workspace:*
         version: link:../../packages/shared_zod
@@ -60,9 +63,6 @@ importers:
         specifier: ^3.25.75
         version: 3.25.75
     devDependencies:
-      '@repo/db':
-        specifier: workspace:*
-        version: link:../../packages/database
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
@@ -127,6 +127,9 @@ importers:
 
   apps/ws-backend:
     dependencies:
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10

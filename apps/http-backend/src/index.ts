@@ -155,7 +155,7 @@ app.post("/room", middleware, async (req, res) => {
         
         res.json({
             message: "Room Created!!",
-            roomId: room.id, 
+            roomId: room.id,
         })
     }
     catch(e){
@@ -170,8 +170,184 @@ app.post("/room", middleware, async (req, res) => {
             error: e
         })
     }
+})
 
-    
+app.delete("/room", middleware, async (req, res) => {
+    const parsedData = createRoomSchema.safeParse(req.body);
+
+    if(!parsedData.success || !req.userId){
+        res.status(400).json({
+            message: "Zod Error or No userId", 
+            error: parsedData.error
+        })
+        return;
+    }
+
+    try{
+        const userId = req.userId;
+        const roomSlug = parsedData.data.name;
+        
+        // First, find the room to check if user is admin
+        const room = await prisma.room.findUnique({
+            where: { slug: roomSlug }
+        });
+
+        if (!room) {
+            res.status(404).json({
+                message: "Room not found"
+            });
+            return;
+        }
+
+        // Check if user is the admin of the room
+        if (room.adminId !== userId) {
+            res.status(403).json({
+                message: "Only room admin can delete the room"
+            });
+            return;
+        }
+
+        // Delete all chats in the room first (due to foreign key constraints)
+        await prisma.chat.deleteMany({
+            where: { roomId: room.id }
+        });
+
+        // Delete the room
+        await prisma.room.delete({
+            where: { id: room.id }
+        });
+        
+        res.json({
+            message: "Room Deleted Successfully!!",
+            roomId: room.id,
+        })
+    }
+    catch(e){
+        res.status(500).json({
+            message: "Error Deleting Room", 
+            error: e
+        })
+    }
+})
+
+app.get("/chats/:roomId", middleware, async (req, res) => {
+    try {
+        const roomIdParam = req.params.roomId;
+        const userId = req.userId;
+
+        if (!roomIdParam) {
+            res.status(400).json({
+                message: "Room ID parameter is required"
+            });
+            return;
+        }
+
+        const roomId = parseInt(roomIdParam);
+
+        if (isNaN(roomId)) {
+            res.status(400).json({
+                message: "Invalid room ID"
+            });
+            return;
+        }
+
+        // Check if room exists
+        const room = await prisma.room.findUnique({
+            where: { id: roomId }
+        });
+
+        if (!room) {
+            res.status(404).json({
+                message: "Room not found"
+            });
+            return;
+        }
+
+        // Get last 50 chats from the room
+        const chats = await prisma.chat.findMany({
+            where: { roomId: roomId },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: { id: 'desc' },
+            take: 50
+        });
+
+        // Reverse to get chronological order (oldest first)
+        const chatHistory = chats.reverse().map(chat => ({
+            id: chat.id,
+            message: chat.message,
+            user: {
+                id: chat.user.id,
+                name: chat.user.name,
+                email: chat.user.email
+            },
+            roomId: chat.roomId
+        }));
+
+        res.json({
+            message: "Chats retrieved successfully",
+            roomId: roomId,
+            chatCount: chatHistory.length,
+            chats: chatHistory
+        });
+
+    } catch (e) {
+        res.status(500).json({
+            message: "Error retrieving chats",
+            error: e
+        });
+    }
+})
+
+app.get("/room/:slug", middleware, async (req, res) => {
+    try {
+        const slug = req.params.slug;
+        const userId = req.userId;
+
+        if (!slug) {
+            res.status(400).json({
+                message: "Room slug parameter is required"
+            });
+            return;
+        }
+
+        // Find the room by slug
+        const room = await prisma.room.findUnique({
+            where: { slug: slug },
+            select: {
+                id: true,
+                slug: true,
+                adminId: true
+            }
+        });
+
+        if (!room) {
+            res.status(404).json({
+                message: "Room not found"
+            });
+            return;
+        }
+
+        res.json({
+            message: "Room found successfully",
+            roomId: room.id,
+            slug: room.slug,
+            isAdmin: room.adminId === userId
+        });
+
+    } catch (e) {
+        res.status(500).json({
+            message: "Error retrieving room",
+            error: e
+        });
+    }
 })
 
 

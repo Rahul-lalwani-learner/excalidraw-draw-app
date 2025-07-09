@@ -1,6 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import jwt from "jsonwebtoken"
 import { configDotenv } from "dotenv";
+import {prisma} from "@repo/db"
 configDotenv();
 
 const wss = new WebSocketServer({port: 3002}); 
@@ -77,12 +78,13 @@ function leaveRoom(userId: string, roomId: string): boolean {
     const userIndex = rooms[roomId].indexOf(userId);
     if (userIndex > -1) {
         rooms[roomId].splice(userIndex, 1);
-        console.log(`User ${userId} left room ${roomId}`);
+        console.log(`User ${userId} left room ${roomId} (in-memory)`);
         
-        // Remove room if empty
+        // Remove room from in-memory storage if empty
+        // Note: Room remains in database for persistence
         if (rooms[roomId].length === 0) {
             delete rooms[roomId];
-            console.log(`Room ${roomId} deleted - no users remaining`);
+            console.log(`Room ${roomId} removed from memory - no active users (DB room preserved)`);
         }
         return true;
     }
@@ -125,41 +127,74 @@ function getUserRooms(userId: string): string[] {
 /**
  * Handle join_room message
  * Adds user to specified room if they're not already in it
+ * First checks if room exists in database
  */
-function handleJoinRoom(userId: string, roomId: string, socket: WebSocket): void {
-    // Check if user is already in the room
-    if (rooms[roomId] && rooms[roomId].includes(userId)) {
-        socket.send(JSON.stringify({
-            type: 'error',
-            message: 'You are already in this room'
-        }));
-        return;
-    }
-    
-    // Join the room
-    const success = joinRoom(userId, roomId);
-    if (success) {
-        // Send success response to the user
-        socket.send(JSON.stringify({
-            type: 'join_room_success',
-            room_id: roomId,
-            users_in_room: getRoomUsers(roomId)
-        }));
-        
-        // Notify other users in the room
-        const user = users[userId];
-        if (user) {
-            broadcastToRoom(roomId, JSON.stringify({
-                type: 'user_joined',
-                user_id: userId,
-                user_name: user.name,
-                room_id: roomId
-            }), userId);
+async function handleJoinRoom(userId: string, roomId: string, socket: WebSocket): Promise<void> {
+    try {
+        // Check if user is already in the room (in-memory check)
+        if (rooms[roomId] && rooms[roomId].includes(userId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'You are already in this room'
+            }));
+            return;
         }
-    } else {
+        
+        // Check if room exists in database
+        const room = await prisma.room.findUnique({
+            where: { id: parseInt(roomId) },
+            include: {
+                admin: true
+            }
+        });
+        
+        if (!room) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Room does not exist'
+            }));
+            return;
+        }
+        
+        // Join the room (in-memory)
+        const success = joinRoom(userId, roomId);
+        if (success) {
+            // Send success response to the user with room info
+            socket.send(JSON.stringify({
+                type: 'join_room_success',
+                room_id: roomId,
+                room_info: {
+                    id: room.id,
+                    slug: room.slug,
+                    adminId: room.adminId,
+                    createdAt: room.createdAt
+                },
+                users_in_room: getRoomUsers(roomId)
+            }));
+            
+            // Notify other users in the room
+            const user = users[userId];
+            if (user) {
+                broadcastToRoom(roomId, JSON.stringify({
+                    type: 'user_joined',
+                    user_id: userId,
+                    user_name: user.name,
+                    room_id: roomId
+                }), userId);
+            }
+            
+            console.log(`User ${userId} joined room ${roomId} (DB room: ${room.slug})`);
+        } else {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Failed to join room'
+            }));
+        }
+    } catch (error) {
+        console.error('Error in handleJoinRoom:', error);
         socket.send(JSON.stringify({
             type: 'error',
-            message: 'Failed to join room'
+            message: 'Internal server error while joining room'
         }));
     }
 }
@@ -167,42 +202,53 @@ function handleJoinRoom(userId: string, roomId: string, socket: WebSocket): void
 /**
  * Handle leave_room message
  * Removes user from specified room if they're in it
+ * Only removes from in-memory storage, keeps room in database
  */
-function handleLeaveRoom(userId: string, roomId: string, socket: WebSocket): void {
-    // Check if user is in the room
-    if (!rooms[roomId] || !rooms[roomId].includes(userId)) {
-        socket.send(JSON.stringify({
-            type: 'error',
-            message: 'You are not in this room'
-        }));
-        return;
-    }
-    
-    // Leave the room
-    const success = leaveRoom(userId, roomId);
-    if (success) {
-        // Send success response to the user
-        socket.send(JSON.stringify({
-            type: 'leave_room_success',
-            room_id: roomId
-        }));
-        
-        // Notify other users in the room (only if room still exists)
-        if (rooms[roomId]) {
-            const user = users[userId];
-            if (user) {
-                broadcastToRoom(roomId, JSON.stringify({
-                    type: 'user_left',
-                    user_id: userId,
-                    user_name: user.name,
-                    room_id: roomId
-                }), userId);
-            }
+async function handleLeaveRoom(userId: string, roomId: string, socket: WebSocket): Promise<void> {
+    try {
+        // Check if user is in the room (in-memory check)
+        if (!rooms[roomId] || !rooms[roomId].includes(userId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'You are not in this room'
+            }));
+            return;
         }
-    } else {
+        
+        // Leave the room (in-memory only)
+        const success = leaveRoom(userId, roomId);
+        if (success) {
+            // Send success response to the user
+            socket.send(JSON.stringify({
+                type: 'leave_room_success',
+                room_id: roomId
+            }));
+            
+            // Notify other users in the room (only if room still exists in memory)
+            if (rooms[roomId]) {
+                const user = users[userId];
+                if (user) {
+                    broadcastToRoom(roomId, JSON.stringify({
+                        type: 'user_left',
+                        user_id: userId,
+                        user_name: user.name,
+                        room_id: roomId
+                    }), userId);
+                }
+            }
+            
+            console.log(`User ${userId} left room ${roomId} (room remains in database)`);
+        } else {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Failed to leave room'
+            }));
+        }
+    } catch (error) {
+        console.error('Error in handleLeaveRoom:', error);
         socket.send(JSON.stringify({
             type: 'error',
-            message: 'Failed to leave room'
+            message: 'Internal server error while leaving room'
         }));
     }
 }
@@ -210,41 +256,82 @@ function handleLeaveRoom(userId: string, roomId: string, socket: WebSocket): voi
 /**
  * Handle chat message
  * Sends message to all users in the specified room
+ * Saves message to database before broadcasting
  */
-function handleChatMessage(userId: string, roomId: string, message: string, socket: WebSocket): void {
-    // Check if user is in the room
-    if (!rooms[roomId] || !rooms[roomId].includes(userId)) {
+async function handleChatMessage(userId: string, roomId: string, message: string, socket: WebSocket): Promise<void> {
+    try {
+        // Check if user is in the room (in-memory check)
+        if (!rooms[roomId] || !rooms[roomId].includes(userId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'You are not in this room'
+            }));
+            return;
+        }
+        
+        // Get user data
+        const user = users[userId];
+        if (!user) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'User not found'
+            }));
+            return;
+        }
+        
+        // Verify room exists in database
+        const room = await prisma.room.findUnique({
+            where: { id: parseInt(roomId) }
+        });
+        
+        if (!room) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Room does not exist in database'
+            }));
+            return;
+        }
+        
+        // Save chat message to database
+        const chatRecord = await prisma.chat.create({
+            data: {
+                roomId: parseInt(roomId),
+                userId: userId,
+                message: message
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        });
+        
+        // Create chat message object for broadcasting
+        const chatMessage = {
+            type: 'chat',
+            room_id: roomId,
+            user_id: userId,
+            user_name: user.name,
+            message: message,
+            timestamp: chatRecord.id ? new Date().toISOString() : new Date().toISOString(),
+            chat_id: chatRecord.id // Include database ID for reference
+        };
+        
+        // Broadcast message to all users in the room (including sender)
+        broadcastToRoom(roomId, JSON.stringify(chatMessage), userId);
+        
+        console.log(`Chat message saved to DB and broadcast - User: ${userId}, Room: ${roomId}, Message: ${message}`);
+        
+    } catch (error) {
+        console.error('Error in handleChatMessage:', error);
         socket.send(JSON.stringify({
             type: 'error',
-            message: 'You are not in this room'
+            message: 'Internal server error while sending message'
         }));
-        return;
     }
-    
-    // Get user data
-    const user = users[userId];
-    if (!user) {
-        socket.send(JSON.stringify({
-            type: 'error',
-            message: 'User not found'
-        }));
-        return;
-    }
-    
-    // Create chat message object
-    const chatMessage = {
-        type: 'chat',
-        room_id: roomId,
-        user_id: userId,
-        user_name: user.name,
-        message: message,
-        timestamp: new Date().toISOString()
-    };
-    
-    // Broadcast message to all users in the room (including sender)
-    broadcastToRoom(roomId, JSON.stringify(chatMessage), userId);
-    
-    console.log(`Chat message from ${userId} in room ${roomId}: ${message}`);
 }
 
 
@@ -297,7 +384,7 @@ wss.on('connection', (socket, request)=>{
     console.log("User-connected user-count: "+userCount);
 
     // Handle incoming messages
-    socket.on("message", (data) => {
+    socket.on("message", async (data) => {
         try {
             // Parse the incoming message
             const message: WebSocketMessage = JSON.parse(data.toString());
@@ -310,15 +397,15 @@ wss.on('connection', (socket, request)=>{
             
             switch (message.type) {
                 case 'join_room':
-                    handleJoinRoom(currentUserId, message.room_id, socket);
+                    await handleJoinRoom(currentUserId, message.room_id, socket);
                     break;
                     
                 case 'leave_room':
-                    handleLeaveRoom(currentUserId, message.room_id, socket);
+                    await handleLeaveRoom(currentUserId, message.room_id, socket);
                     break;
                     
                 case 'chat':
-                    handleChatMessage(currentUserId, message.room_id, message.message, socket);
+                    await handleChatMessage(currentUserId, message.room_id, message.message, socket);
                     break;
                     
                 default:
