@@ -50,8 +50,14 @@ app.post("/signup", async (req, res) => {
         }
     }
     else{
+        // Extract and format Zod validation errors for better user experience
+        const errorMessages = zResponse.error.errors.map(err => {
+            const field = err.path.join('.');
+            return `${field}: ${err.message}`;
+        }).join(', ');
+        
         res.status(400).json({
-            message: "Zod Error", 
+            message: `Validation Error: ${errorMessages}`, 
             error: zResponse.error
         })
     }
@@ -116,8 +122,14 @@ app.post("/signin", async (req, res) => {
         }
     }
     else{
+        // Extract and format Zod validation errors for better user experience
+        const errorMessages = signinResponse.error.errors.map(err => {
+            const field = err.path.join('.');
+            return `${field}: ${err.message}`;
+        }).join(', ');
+        
         res.status(400).json({
-            message: "Zod Error", 
+            message: `Validation Error: ${errorMessages}`, 
             error: signinResponse.error
         })
     }
@@ -127,8 +139,19 @@ app.post("/room", middleware, async (req, res) => {
     const parsedData = createRoomSchema.safeParse(req.body);
 
     if(!parsedData.success || !req.userId){
+        let errorMessage = "Unknown error";
+        if (!parsedData.success) {
+            const errorMessages = parsedData.error.errors.map(err => {
+                const field = err.path.join('.');
+                return `${field}: ${err.message}`;
+            }).join(', ');
+            errorMessage = `Validation Error: ${errorMessages}`;
+        } else if (!req.userId) {
+            errorMessage = "User authentication required";
+        }
+        
         res.status(400).json({
-            message: "Zod Error or No userId", 
+            message: errorMessage, 
             error: parsedData.error
         })
         return;
@@ -167,8 +190,19 @@ app.delete("/room", middleware, async (req, res) => {
     const parsedData = createRoomSchema.safeParse(req.body);
 
     if(!parsedData.success || !req.userId){
+        let errorMessage = "Unknown error";
+        if (!parsedData.success) {
+            const errorMessages = parsedData.error.errors.map(err => {
+                const field = err.path.join('.');
+                return `${field}: ${err.message}`;
+            }).join(', ');
+            errorMessage = `Validation Error: ${errorMessages}`;
+        } else if (!req.userId) {
+            errorMessage = "User authentication required";
+        }
+        
         res.status(400).json({
-            message: "Zod Error or No userId", 
+            message: errorMessage, 
             error: parsedData.error
         })
         return;

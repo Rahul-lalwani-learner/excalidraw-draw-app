@@ -287,7 +287,7 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
           <div className="flex items-center space-x-4">
             <button
               onClick={handleLeaveRoom}
-              className="text-gray-600 hover:text-gray-800 font-medium"
+              className="text-gray-600 hover:text-gray-800 font-medium cursor-pointer"
             >
               ← Back
             </button>

@@ -55,10 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: false, message: 'Invalid response from server' }
     } catch (error) {
-      const axiosError = error as { response?: { data?: { message?: string } } }
+      const axiosError = error as { response?: { data?: { message?: string; error?: unknown } } }
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (axiosError.response?.data?.message) {
+        errorMessage = axiosError.response.data.message;
+      }
+      
       return { 
         success: false, 
-        message: axiosError.response?.data?.message || 'Login failed. Please try again.' 
+        message: errorMessage
       }
     }
   }
@@ -77,10 +83,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: false, message: 'Signup failed. Please try again.' }
     } catch (error) {
-      const axiosError = error as { response?: { data?: { message?: string } } }
+      const axiosError = error as { response?: { data?: { message?: string; error?: unknown } } }
+      let errorMessage = 'Signup failed. Please try again.';
+      
+      if (axiosError.response?.data?.message) {
+        errorMessage = axiosError.response.data.message;
+      }
+      
       return { 
         success: false, 
-        message: axiosError.response?.data?.message || 'Signup failed. Please try again.' 
+        message: errorMessage
       }
     }
   }

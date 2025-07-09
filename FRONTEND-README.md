@@ -62,8 +62,6 @@ A complete real-time chat application built with React, Next.js, and WebSocket i
    ```env
    DATABASE_URL="your-postgresql-connection-string"
    JWT_SECRET="your-jwt-secret-key"
-   BACKEND_HTTP_URL="http://localhost:3001"
-   BACKEND_WS_URL="http://localhost:3002"
    NEXT_PUBLIC_BACKEND_HTTP_URL="http://localhost:3001"
    NEXT_PUBLIC_BACKEND_WS_URL="ws://localhost:3002"
    ```
@@ -129,10 +127,6 @@ DATABASE_URL="postgresql://..."
 
 # JWT Authentication
 JWT_SECRET="your-secret-key"
-
-# Backend URLs
-BACKEND_HTTP_URL="http://localhost:3001"
-BACKEND_WS_URL="http://localhost:3002"
 
 # Frontend URLs (Next.js)
 NEXT_PUBLIC_BACKEND_HTTP_URL="http://localhost:3001"
