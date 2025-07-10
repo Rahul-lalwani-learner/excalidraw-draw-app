@@ -290,7 +290,14 @@ app.get("/chats/:roomId", middleware, async (req, res) => {
 
         // Get last 50 chats from the room
         const chats = await prisma.chat.findMany({
-            where: { roomId: roomId },
+            where: { roomId: roomId, 
+                NOT: {
+                message: {
+                    startsWith: '{"shape":'
+                }
+                }
+             },
+            
             include: {
                 user: {
                     select: {
