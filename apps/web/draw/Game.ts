@@ -19,6 +19,9 @@ export class Game {
     private offsetY: number = 0;
     private lastDragX: number = 0;
     private lastDragY: number = 0;
+    private zoomLevel: number = 1.0;
+    private minZoom: number = 0.1;
+    private maxZoom: number = 5.0;
 
     socket: WebSocket;
 
@@ -39,6 +42,7 @@ export class Game {
         this.canvas.removeEventListener("mousedown", this.mouseDownHandler);
         this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
         this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
+        this.canvas.removeEventListener("wheel", this.wheelHandler);
     }
 
     setTool(tool: Tool) {
@@ -177,6 +181,16 @@ export class Game {
         this.ctx.fillStyle = "rgba(30, 30, 30, 1)"; // Dark background
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Save current transform
+        this.ctx.save();
+        
+        // Apply zoom transform around the center of the canvas
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        this.ctx.translate(centerX, centerY);
+        this.ctx.scale(this.zoomLevel, this.zoomLevel);
+        this.ctx.translate(-centerX, -centerY);
+
         // Draw all existing shapes
         this.existingShapes.forEach(shape => {
             if (shape.type === "rect") {
@@ -225,6 +239,9 @@ export class Game {
                 this.ctx.fillText(shape.text, shape.x + this.offsetX, shape.y + this.offsetY);
             }
         });
+        
+        // Restore original transform
+        this.ctx.restore();
     }
 
     mouseDownHandler = (e: MouseEvent) => {
@@ -239,13 +256,17 @@ export class Game {
             return;
         }
         
+        // Convert screen coordinates to world coordinates
+        const worldX = (this.startX - (this.canvas.width / 2)) / this.zoomLevel + (this.canvas.width / 2) - this.offsetX;
+        const worldY = (this.startY - (this.canvas.height / 2)) / this.zoomLevel + (this.canvas.height / 2) - this.offsetY;
+        
         // For pencil, start a new shape immediately
         if (this.selectedTool === "pencil") {
             const newShape: Shape = {
                 type: "pencil",
                 points: [{ 
-                    x: this.startX - this.offsetX, 
-                    y: this.startY - this.offsetY 
+                    x: worldX, 
+                    y: worldY 
                 }],
                 color: this.selectedColor,
                 strokeWidth: this.strokeWidth
@@ -259,25 +280,33 @@ export class Game {
         if (!this.clicked) return;
         
         this.clicked = false;
-        const width = e.clientX - this.startX;
-        const height = e.clientY - this.startY;
+        const currentX = e.clientX;
+        const currentY = e.clientY;
+        const width = currentX - this.startX;
+        const height = currentY - this.startY;
+        
+        // Convert screen coordinates to world coordinates
+        const worldStartX = (this.startX - (this.canvas.width / 2)) / this.zoomLevel + (this.canvas.width / 2) - this.offsetX;
+        const worldStartY = (this.startY - (this.canvas.height / 2)) / this.zoomLevel + (this.canvas.height / 2) - this.offsetY;
+        const worldWidth = width / this.zoomLevel;
+        const worldHeight = height / this.zoomLevel;
 
         let shape: Shape | null = null;
         
         if (this.selectedTool === "rect") {
             shape = {
                 type: "rect",
-                x: this.startX - this.offsetX,
-                y: this.startY - this.offsetY,
-                height,
-                width,
+                x: worldStartX,
+                y: worldStartY,
+                height: worldHeight,
+                width: worldWidth,
                 color: this.selectedColor,
                 strokeWidth: this.strokeWidth
             };
         } else if (this.selectedTool === "circle") {
-            const radius = Math.max(Math.abs(width), Math.abs(height)) / 2;
-            const centerX = this.startX + (width / 2) - this.offsetX;
-            const centerY = this.startY + (height / 2) - this.offsetY;
+            const radius = Math.max(Math.abs(worldWidth), Math.abs(worldHeight)) / 2;
+            const centerX = worldStartX + (worldWidth / 2);
+            const centerY = worldStartY + (worldHeight / 2);
             shape = {
                 type: "circle",
                 radius,
@@ -291,8 +320,8 @@ export class Game {
             if (text) {
                 shape = {
                     type: "text",
-                    x: this.startX - this.offsetX,
-                    y: this.startY - this.offsetY,
+                    x: worldStartX,
+                    y: worldStartY,
                     text,
                     color: this.selectedColor,
                     fontSize: this.strokeWidth * 10
@@ -341,12 +370,16 @@ export class Game {
         }
         
         if (this.selectedTool === "pencil") {
+            // Convert screen coordinates to world coordinates
+            const worldX = (currentX - (this.canvas.width / 2)) / this.zoomLevel + (this.canvas.width / 2) - this.offsetX;
+            const worldY = (currentY - (this.canvas.height / 2)) / this.zoomLevel + (this.canvas.height / 2) - this.offsetY;
+            
             // Add point to the current pencil path
             const lastShape = this.existingShapes[this.existingShapes.length - 1];
             if (lastShape && lastShape.type === "pencil") {
                 lastShape.points.push({ 
-                    x: currentX - this.offsetX, 
-                    y: currentY - this.offsetY 
+                    x: worldX, 
+                    y: worldY 
                 });
                 this.clearCanvas();
             }
@@ -354,24 +387,50 @@ export class Game {
         }
         
         // For other tools, show preview
-        const width = currentX - this.startX;
-        const height = currentY - this.startY;
-        
         this.clearCanvas();
+        
+        // Convert screen coordinates to world coordinates for preview
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        // Convert screen coordinates to world coordinates 
+        const worldStartX = (this.startX - centerX) / this.zoomLevel + centerX - this.offsetX;
+        const worldStartY = (this.startY - centerY) / this.zoomLevel + centerY - this.offsetY;
+        const worldCurrentX = (currentX - centerX) / this.zoomLevel + centerX - this.offsetX;
+        const worldCurrentY = (currentY - centerY) / this.zoomLevel + centerY - this.offsetY;
+        const worldWidth = worldCurrentX - worldStartX;
+        const worldHeight = worldCurrentY - worldStartY;
+        
+        // Save context for preview drawing
+        this.ctx.save();
+        
+        // Apply transform for preview
+        this.ctx.translate(centerX, centerY);
+        this.ctx.scale(this.zoomLevel, this.zoomLevel);
+        this.ctx.translate(-centerX, -centerY);
+        
         this.ctx.strokeStyle = this.selectedColor;
         this.ctx.lineWidth = this.strokeWidth;
         
         if (this.selectedTool === "rect") {
-            this.ctx.strokeRect(this.startX, this.startY, width, height);   
+            this.ctx.strokeRect(
+                worldStartX + this.offsetX, 
+                worldStartY + this.offsetY, 
+                worldWidth, 
+                worldHeight
+            );   
         } else if (this.selectedTool === "circle") {
-            const radius = Math.max(Math.abs(width), Math.abs(height)) / 2;
-            const centerX = this.startX + (width / 2);
-            const centerY = this.startY + (height / 2);
+            const radius = Math.max(Math.abs(worldWidth), Math.abs(worldHeight)) / 2;
+            const worldCenterX = worldStartX + (worldWidth / 2) + this.offsetX;
+            const worldCenterY = worldStartY + (worldHeight / 2) + this.offsetY;
             this.ctx.beginPath();
-            this.ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            this.ctx.arc(worldCenterX, worldCenterY, radius, 0, Math.PI * 2);
             this.ctx.stroke();
             this.ctx.closePath();                
         }
+        
+        // Restore context
+        this.ctx.restore();
     }
 
     sendShapeToServer(shape: Shape) {
@@ -388,6 +447,26 @@ export class Game {
         this.canvas.addEventListener("mousedown", this.mouseDownHandler);
         this.canvas.addEventListener("mouseup", this.mouseUpHandler);
         this.canvas.addEventListener("mousemove", this.mouseMoveHandler);
+        this.canvas.addEventListener("wheel", this.wheelHandler);
+    }
+
+    wheelHandler = (e: WheelEvent) => {
+        // Only zoom when Ctrl key is pressed
+        if (e.ctrlKey && this.selectedTool === "drag") {
+            e.preventDefault();
+            
+            // Determine zoom direction
+            const delta = e.deltaY < 0 ? 1.1 : 0.9;
+            
+            // Calculate new zoom level
+            const newZoom = this.zoomLevel * delta;
+            
+            // Apply constraints
+            if (newZoom >= this.minZoom && newZoom <= this.maxZoom) {
+                this.zoomLevel = newZoom;
+                this.clearCanvas();
+            }
+        }
     }
 
     requestShapesFromServer() {
