@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { IconButton } from "./IconButton";
-import { Circle, Pencil, RectangleHorizontal, Type, ChevronLeft, MessageCircle } from "lucide-react";
+import { Circle, Pencil, RectangleHorizontal, Type, ChevronLeft, MessageCircle, Move } from "lucide-react";
 import { Game } from "../draw/Game";
 import { Tool } from "../draw/types";
 
@@ -94,6 +94,11 @@ export function Canvas({ roomId, socket, onBack, isConnected, onToggleChat, room
                     onClick={() => setSelectedTool("text")} 
                     activated={selectedTool === "text"} 
                     icon={<Type size={20} />}
+                />
+                <IconButton 
+                    onClick={() => setSelectedTool("drag")} 
+                    activated={selectedTool === "drag"} 
+                    icon={<Move size={20} />}
                 />
                 
                 {/* Color picker */}

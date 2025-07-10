@@ -15,6 +15,10 @@ export class Game {
     private loadingShapes: boolean = false;
     private shapeLoadRetryCount: number = 0;
     private maxShapeLoadRetries: number = 3;
+    private offsetX: number = 0;
+    private offsetY: number = 0;
+    private lastDragX: number = 0;
+    private lastDragY: number = 0;
 
     socket: WebSocket;
 
@@ -178,12 +182,23 @@ export class Game {
             if (shape.type === "rect") {
                 this.ctx.strokeStyle = shape.color || "#FFFFFF";
                 this.ctx.lineWidth = shape.strokeWidth || 2;
-                this.ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                this.ctx.strokeRect(
+                    shape.x + this.offsetX, 
+                    shape.y + this.offsetY, 
+                    shape.width, 
+                    shape.height
+                );
             } else if (shape.type === "circle") {
                 this.ctx.strokeStyle = shape.color || "#FFFFFF";
                 this.ctx.lineWidth = shape.strokeWidth || 2;
                 this.ctx.beginPath();
-                this.ctx.arc(shape.centerX, shape.centerY, Math.abs(shape.radius), 0, Math.PI * 2);
+                this.ctx.arc(
+                    shape.centerX + this.offsetX, 
+                    shape.centerY + this.offsetY, 
+                    Math.abs(shape.radius), 
+                    0, 
+                    Math.PI * 2
+                );
                 this.ctx.stroke();
                 this.ctx.closePath();                
             } else if (shape.type === "pencil" && shape.points && shape.points.length > 1) {
@@ -193,12 +208,12 @@ export class Game {
                 
                 const firstPoint = shape.points[0];
                 if (firstPoint) {
-                    this.ctx.moveTo(firstPoint.x, firstPoint.y);
+                    this.ctx.moveTo(firstPoint.x + this.offsetX, firstPoint.y + this.offsetY);
                     
                     for (let i = 1; i < shape.points.length; i++) {
                         const point = shape.points[i];
                         if (point) {
-                            this.ctx.lineTo(point.x, point.y);
+                            this.ctx.lineTo(point.x + this.offsetX, point.y + this.offsetY);
                         }
                     }
                 }
@@ -207,7 +222,7 @@ export class Game {
             } else if (shape.type === "text") {
                 this.ctx.fillStyle = shape.color || "#FFFFFF";
                 this.ctx.font = `${shape.fontSize || 20}px Arial`;
-                this.ctx.fillText(shape.text, shape.x, shape.y);
+                this.ctx.fillText(shape.text, shape.x + this.offsetX, shape.y + this.offsetY);
             }
         });
     }
@@ -217,11 +232,21 @@ export class Game {
         this.startX = e.clientX;
         this.startY = e.clientY;
         
+        if (this.selectedTool === "drag") {
+            // For drag tool, remember the current position
+            this.lastDragX = e.clientX;
+            this.lastDragY = e.clientY;
+            return;
+        }
+        
         // For pencil, start a new shape immediately
         if (this.selectedTool === "pencil") {
             const newShape: Shape = {
                 type: "pencil",
-                points: [{ x: this.startX, y: this.startY }],
+                points: [{ 
+                    x: this.startX - this.offsetX, 
+                    y: this.startY - this.offsetY 
+                }],
                 color: this.selectedColor,
                 strokeWidth: this.strokeWidth
             };
@@ -242,8 +267,8 @@ export class Game {
         if (this.selectedTool === "rect") {
             shape = {
                 type: "rect",
-                x: this.startX,
-                y: this.startY,
+                x: this.startX - this.offsetX,
+                y: this.startY - this.offsetY,
                 height,
                 width,
                 color: this.selectedColor,
@@ -251,8 +276,8 @@ export class Game {
             };
         } else if (this.selectedTool === "circle") {
             const radius = Math.max(Math.abs(width), Math.abs(height)) / 2;
-            const centerX = this.startX + (width / 2);
-            const centerY = this.startY + (height / 2);
+            const centerX = this.startX + (width / 2) - this.offsetX;
+            const centerY = this.startY + (height / 2) - this.offsetY;
             shape = {
                 type: "circle",
                 radius,
@@ -266,8 +291,8 @@ export class Game {
             if (text) {
                 shape = {
                     type: "text",
-                    x: this.startX,
-                    y: this.startY,
+                    x: this.startX - this.offsetX,
+                    y: this.startY - this.offsetY,
                     text,
                     color: this.selectedColor,
                     fontSize: this.strokeWidth * 10
@@ -297,11 +322,32 @@ export class Game {
         const currentX = e.clientX;
         const currentY = e.clientY;
         
+        if (this.selectedTool === "drag") {
+            // Calculate how much the mouse has moved
+            const dx = currentX - this.lastDragX;
+            const dy = currentY - this.lastDragY;
+            
+            // Update the offsets
+            this.offsetX += dx;
+            this.offsetY += dy;
+            
+            // Update the last position
+            this.lastDragX = currentX;
+            this.lastDragY = currentY;
+            
+            // Redraw everything with the new offset
+            this.clearCanvas();
+            return;
+        }
+        
         if (this.selectedTool === "pencil") {
             // Add point to the current pencil path
             const lastShape = this.existingShapes[this.existingShapes.length - 1];
             if (lastShape && lastShape.type === "pencil") {
-                lastShape.points.push({ x: currentX, y: currentY });
+                lastShape.points.push({ 
+                    x: currentX - this.offsetX, 
+                    y: currentY - this.offsetY 
+                });
                 this.clearCanvas();
             }
             return;
