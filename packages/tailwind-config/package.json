@@ -5,7 +5,8 @@
   "private": true,
   "exports": {
     ".": "./shared-styles.css",
-    "./postcss": "./postcss.config.js"
+    "./postcss": "./postcss.config.js",
+    "./tailwind": "./tailwind.config.js"
   },
   "devDependencies": {
     "postcss": "^8.5.3",
