@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import axios from 'axios'
+import { Canvas } from './Canvas'
+import { X } from 'lucide-react'
 
 interface Chat {
   id: string
@@ -19,20 +21,23 @@ interface Chat {
 }
 
 interface Message {
-  type: 'join_room' | 'leave_room' | 'chat'
+  type: 'join_room' | 'leave_room' | 'chat' | 'draw'
   room_id?: string
   message?: string
   temp_id?: string // For optimistic updates
+  shape_data?: string // For drawing data
 }
 
 export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
   const [messages, setMessages] = useState<Chat[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [roomId, setRoomId] = useState<string | null>(null)
+  const [roomName, setRoomName] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [isConnected, setIsConnected] = useState(false)
   const [isJoined, setIsJoined] = useState(false)
+  const [showChat, setShowChat] = useState(false)
   
   const { user, token } = useAuth()
   const router = useRouter()
@@ -63,6 +68,15 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
         
         const fetchedRoomId = roomResponse.data.roomId
         setRoomId(fetchedRoomId)
+        
+        // Set room name/slug
+        if (roomResponse.data.slug) {
+          setRoomName(roomResponse.data.slug)
+        } else if (roomResponse.data.roomSlug) {
+          setRoomName(roomResponse.data.roomSlug)
+        } else {
+          setRoomName(`Room #${fetchedRoomId}`)
+        }
         
         // Fetch previous messages
         const messagesResponse = await axios.get(
@@ -127,6 +141,18 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
           console.log('Received WebSocket message:', data)
           
           if (data.type === 'chat') {
+            // Check if this message contains drawing data
+            try {
+              const messageContent = JSON.parse(data.message);
+              // If it has 'shape' property, it's a drawing message
+              // Don't add to chat messages
+              if (messageContent.shape) {
+                return;
+              }
+            } catch {
+              // It's a regular chat message, not a drawing message
+            }
+            
             // Check if this is a confirmation of our optimistic update
             if (data.temp_id) {
               // Update the pending message with the real ID
@@ -151,6 +177,9 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
               }
               setMessages(prev => [...prev, chatMessage])
             }
+          } else if (data.type === 'draw') {
+            // Drawing data is handled by the Canvas component
+            console.log('Received drawing data');
           } else if (data.type === 'error') {
             // Check if this is an error for a pending message
             if (data.temp_id) {
@@ -160,6 +189,10 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
             setError(data.message || 'An error occurred')
           } else if (data.type === 'join_room_success') {
             console.log('Successfully joined room:', data.room_id)
+            // If room info is available, update room name
+            if (data.room_info && data.room_info.slug) {
+              setRoomName(data.room_info.slug)
+            }
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error)
@@ -280,103 +313,116 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={handleLeaveRoom}
-              className="text-gray-600 hover:text-gray-800 font-medium cursor-pointer"
-            >
-              ← Back
-            </button>
+    <div className="relative h-screen bg-gray-900 overflow-hidden">
+      {/* Canvas and Drawing UI */}
+      {roomId && wsRef.current && (
+        <Canvas 
+          roomId={roomId} 
+          socket={wsRef.current} 
+          onBack={handleLeaveRoom}
+          isConnected={isConnected}
+          onToggleChat={() => setShowChat(!showChat)}
+          roomName={roomName}
+        />
+      )}
+
+      {/* Chat Sidebar (will be toggled by Canvas component) */}
+      {showChat && (
+        <div className="absolute top-0 right-0 h-full w-96 bg-gray-800 shadow-lg z-20 overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center p-4 border-b border-gray-700">
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                Room: {decodeURIComponent(roomSlug)}
-              </h1>
-              <div className="flex items-center space-x-4 text-sm text-gray-500">
-                <span>Connected as: {user?.name}</span>
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
-                  {isConnected ? 'Connected' : 'Disconnected'}
-                </span>
-              </div>
+              <h2 className="text-lg font-medium text-white">Chat</h2>
+              {roomName && (
+                <p className="text-sm text-gray-400">Room: {roomName}</p>
+              )}
+            </div>
+            <button
+              onClick={() => setShowChat(false)}
+              className="text-gray-400 hover:text-white flex items-center"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-4">
+              {messages.filter(msg => {
+                // Filter out drawing messages
+                try {
+                  const data = JSON.parse(msg.message);
+                  return !data.shape; // Skip messages with shape data
+                } catch {
+                  return true; // Keep regular messages
+                }
+              }).length === 0 ? (
+                <div className="text-center text-gray-400 py-8">
+                  No messages yet. Start the conversation!
+                </div>
+              ) : (
+                messages.filter(msg => {
+                  // Filter out drawing messages
+                  try {
+                    const data = JSON.parse(msg.message);
+                    return !data.shape; // Skip messages with shape data
+                  } catch {
+                    return true; // Keep regular messages
+                  }
+                }).map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.user.id === user?.id ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-xs px-4 py-2 rounded-lg relative ${
+                        message.user.id === user?.id
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-white'
+                      } ${message.isPending ? 'opacity-70' : ''}`}
+                    >
+                      <div className="text-xs opacity-75 mb-1">
+                        {message.user.name}
+                      </div>
+                      <div className="break-words">{message.message}</div>
+                      {message.isPending && (
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
-        <div className="max-w-4xl mx-auto space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
-              <div className="text-red-800 text-sm">{error}</div>
-            </div>
-          )}
-          
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              No messages yet. Start the conversation!
-            </div>
-          ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.user.id === user?.id ? 'justify-end' : 'justify-start'}`}
+          {/* Message Input */}
+          <div className="p-4 border-t border-gray-700">
+            <form onSubmit={sendMessage} className="flex space-x-2">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder={
+                  isConnected && isJoined
+                    ? 'Type your message...'
+                    : 'Connecting...'
+                }
+                disabled={!isConnected || !isJoined}
+                className="flex-1 px-3 py-2 bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+              />
+              <button
+                type="submit"
+                disabled={!isConnected || !isJoined || !newMessage.trim()}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               >
-                <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg relative ${
-                    message.user.id === user?.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-gray-900 shadow-sm'
-                  } ${message.isPending ? 'opacity-70' : ''}`}
-                >
-                  <div className="text-xs opacity-75 mb-1">
-                    {message.user.name}
-                  </div>
-                  <div className="break-words">{message.message}</div>
-                  {message.isPending && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-          <div ref={messagesEndRef} />
+                Send
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
-
-      {/* Message Input */}
-      <div className="bg-white border-t">
-        <div className="max-w-4xl mx-auto p-4">
-          <form onSubmit={sendMessage} className="flex space-x-4">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={
-                isConnected && isJoined
-                  ? 'Type your message...'
-                  : 'Connecting...'
-              }
-              disabled={!isConnected || !isJoined}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 placeholder-gray-500"
-            />
-            <button
-              type="submit"
-              disabled={!isConnected || !isJoined || !newMessage.trim()}
-              className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
-          </form>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -45,8 +45,20 @@ interface ChatMessage {
     temp_id?: string; // For optimistic updates
 }
 
+interface DrawMessage {
+    type: 'draw';
+    room_id: string;
+    shape_data: string; // JSON stringified shape data
+    temp_id?: string; // For optimistic updates
+}
+
+interface GetShapesMessage {
+    type: 'get_shapes';
+    room_id: string;
+}
+
 // Union type for all possible message types
-type WebSocketMessage = JoinRoomMessage | LeaveRoomMessage | ChatMessage;
+type WebSocketMessage = JoinRoomMessage | LeaveRoomMessage | ChatMessage | DrawMessage | GetShapesMessage;
 
 // Global storage for users and rooms
 const users: Users = {};
@@ -266,11 +278,6 @@ async function handleLeaveRoom(userId: string, roomId: string, socket: WebSocket
     }
 }
 
-/**
- * Handle chat message
- * Sends message to all users in the specified room
- * Saves message to database before broadcasting
- */
 async function handleChatMessage(userId: string, roomId: string, message: string, socket: WebSocket, tempId?: string): Promise<void> {
     try {
         // Check if user is in the room (in-memory check)
@@ -319,6 +326,18 @@ async function handleChatMessage(userId: string, roomId: string, message: string
             return;
         }
         
+        // Check if message is a drawing shape
+        let isDrawingMessage = false;
+        try {
+            // Check if it contains shape data
+            const messageData = JSON.parse(message);
+            if (messageData.shape) {
+                isDrawingMessage = true;
+            }
+        } catch {
+            // Not a JSON message, so not a drawing message
+        }
+        
         // Save chat message to database
         const chatRecord = await prisma.chat.create({
             data: {
@@ -345,7 +364,8 @@ async function handleChatMessage(userId: string, roomId: string, message: string
             message: message,
             timestamp: chatRecord.id ? new Date().toISOString() : new Date().toISOString(),
             chat_id: chatRecord.id, // Include database ID for reference
-            temp_id: tempId // Include temp_id for optimistic updates
+            temp_id: tempId, // Include temp_id for optimistic updates
+            is_drawing: isDrawingMessage
         };
         
         // Send confirmation to the sender with temp_id for optimistic update
@@ -361,7 +381,8 @@ async function handleChatMessage(userId: string, roomId: string, message: string
             user_name: user.name,
             message: message,
             timestamp: chatRecord.id ? new Date().toISOString() : new Date().toISOString(),
-            chat_id: chatRecord.id
+            chat_id: chatRecord.id,
+            is_drawing: isDrawingMessage
         };
         
         broadcastToRoom(roomId, JSON.stringify(broadcastMessage), userId);
@@ -379,6 +400,93 @@ async function handleChatMessage(userId: string, roomId: string, message: string
         };
         
         socket.send(JSON.stringify(errorMessage));
+    }
+}
+
+async function handleDrawMessage(userId: string, roomId: string, shapeData: string, socket: WebSocket, tempId?: string): Promise<void> {
+    try {
+        // Reuse handleChatMessage logic but mark it explicitly as a drawing message
+        await handleChatMessage(userId, roomId, shapeData, socket, tempId);
+    } catch (error) {
+        console.error('Error in handleDrawMessage:', error);
+        socket.send(JSON.stringify({
+            type: 'error',
+            message: 'Internal server error while processing drawing',
+            temp_id: tempId
+        }));
+    }
+}
+
+async function handleGetShapes(userId: string | null, roomId: string, socket: WebSocket): Promise<void> {
+    try {
+        if (!userId) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'User not authenticated'
+            }));
+            return;
+        }
+        
+        console.log(`User ${userId} requested shapes for room ${roomId}`);
+        
+        // Check if user is in the room
+        if (!rooms[roomId] || !rooms[roomId].includes(userId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'You are not in this room'
+            }));
+            return;
+        }
+        
+        // Verify room exists in database
+        const parsedRoomId = parseInt(roomId);
+        if (isNaN(parsedRoomId)) {
+            socket.send(JSON.stringify({
+                type: 'error',
+                message: 'Invalid room ID format'
+            }));
+            return;
+        }
+        
+        // Fetch all messages for the room
+        const roomChats = await prisma.chat.findMany({
+            where: { roomId: parsedRoomId },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        });
+        
+        // Extract shapes from messages
+        const shapes = roomChats
+            .map(chat => {
+                try {
+                    const messageData = JSON.parse(chat.message);
+                    return messageData.shape || null;
+                } catch {
+                    return null;
+                }
+            })
+            .filter(Boolean); // Remove nulls
+        
+        console.log(`Found ${shapes.length} shapes for room ${roomId}`);
+        
+        // Send shapes to the client
+        socket.send(JSON.stringify({
+            type: 'shapes_data',
+            shapes: shapes
+        }));
+        
+    } catch (error) {
+        console.error('Error in handleGetShapes:', error);
+        socket.send(JSON.stringify({
+            type: 'error',
+            message: 'Failed to fetch shapes'
+        }));
     }
 }
 
@@ -460,6 +568,16 @@ wss.on('connection', (socket, request)=>{
                     
                 case 'chat':
                     await handleChatMessage(currentUserId, message.room_id, message.message, socket, message.temp_id);
+                    break;
+                    
+                case 'draw':
+                    await handleDrawMessage(currentUserId, message.room_id, message.shape_data, socket, message.temp_id);
+                    break;
+                    
+                case 'get_shapes':
+                    await handleGetShapes(currentUserId, message.room_id, socket);
+                    break;
+                    await handleGetShapes(currentUserId, message.room_id, socket);
                     break;
                     
                 default:
