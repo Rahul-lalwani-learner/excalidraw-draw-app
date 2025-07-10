@@ -290,20 +290,20 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg text-gray-600">Loading room...</div>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-base sm:text-lg text-gray-600">Loading room...</div>
       </div>
     )
   }
 
   if (error && !roomId) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="text-red-600 mb-4">{error}</div>
+          <div className="text-red-600 mb-4 text-sm sm:text-base">{error}</div>
           <button
             onClick={() => router.push('/dashboard')}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+            className="bg-indigo-600 text-white px-3 py-2 text-sm sm:text-base rounded-md hover:bg-indigo-700"
           >
             Back to Dashboard
           </button>
@@ -328,12 +328,12 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
 
       {/* Chat Sidebar (will be toggled by Canvas component) */}
       {showChat && (
-        <div className="absolute top-0 right-0 h-full w-96 bg-gray-800 shadow-lg z-20 overflow-hidden flex flex-col">
+        <div className="absolute top-0 right-0 h-full w-full sm:w-3/4 md:w-1/2 lg:w-96 bg-gray-800 shadow-lg z-20 overflow-hidden flex flex-col">
           <div className="flex justify-between items-center p-4 border-b border-gray-700">
             <div>
               <h2 className="text-lg font-medium text-white">Chat</h2>
               {roomName && (
-                <p className="text-sm text-gray-400">Room: {roomName}</p>
+                <p className="text-sm text-gray-400 truncate max-w-[160px] sm:max-w-[200px]">Room: {roomName}</p>
               )}
             </div>
             <button
@@ -345,8 +345,8 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
           </div>
           
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-4">
+            <div className="space-y-3 sm:space-y-4">
               {messages.filter(msg => {
                 // Filter out drawing messages
                 try {
@@ -356,7 +356,7 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
                   return true; // Keep regular messages
                 }
               }).length === 0 ? (
-                <div className="text-center text-gray-400 py-8">
+                <div className="text-center text-gray-400 py-6 sm:py-8">
                   No messages yet. Start the conversation!
                 </div>
               ) : (
@@ -374,16 +374,16 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
                     className={`flex ${message.user.id === user?.id ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-xs px-4 py-2 rounded-lg relative ${
+                      className={`max-w-[75%] sm:max-w-xs px-3 py-2 sm:px-4 rounded-lg relative ${
                         message.user.id === user?.id
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-700 text-white'
                       } ${message.isPending ? 'opacity-70' : ''}`}
                     >
-                      <div className="text-xs opacity-75 mb-1">
+                      <div className="text-[10px] sm:text-xs opacity-75 mb-1">
                         {message.user.name}
                       </div>
-                      <div className="break-words">{message.message}</div>
+                      <div className="break-words text-sm sm:text-base">{message.message}</div>
                       {message.isPending && (
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full flex items-center justify-center">
                           <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
@@ -398,7 +398,7 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
           </div>
 
           {/* Message Input */}
-          <div className="p-4 border-t border-gray-700">
+          <div className="p-2 sm:p-3 md:p-4 border-t border-gray-700">
             <form onSubmit={sendMessage} className="flex space-x-2">
               <input
                 type="text"
@@ -410,12 +410,12 @@ export function ChatRoomClient({ roomSlug }: { roomSlug: string }) {
                     : 'Connecting...'
                 }
                 disabled={!isConnected || !isJoined}
-                className="flex-1 px-3 py-2 bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+                className="flex-1 px-2 py-2 sm:px-3 text-sm sm:text-base bg-gray-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
               />
               <button
                 type="submit"
                 disabled={!isConnected || !isJoined || !newMessage.trim()}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="bg-blue-600 text-white px-3 py-2 text-sm sm:text-base rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               >
                 Send
               </button>
