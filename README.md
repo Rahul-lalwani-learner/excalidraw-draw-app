@@ -1,58 +1,179 @@
-# Turborepo Tailwind CSS starter
+# ExcaliDraw - Collaborative Drawing & Chat App
 
-This Turborepo starter is maintained by the Turborepo core team.
+A real-time collaborative drawing application with integrated chat functionality, built using Next.js, TypeScript, WebSockets, and Prisma. This app allows multiple users to join drawing rooms, create and modify shapes on a shared canvas, and communicate through an integrated chat system.
 
-## Using this example
+![ExcaliDraw](chatRoom.png)
 
-Run the following command:
+## Features
 
-```sh
-npx create-turbo@latest -e with-tailwind
-```
+- **Collaborative Drawing Tools**:
+  - **Shape Tools**: Rectangle, Circle, Text
+  - **Freehand Drawing**: Pencil tool for free-form drawing
+  - **Selection Tool**: Select and move existing shapes
+  - **Pan/Drag Tool**: Navigate the canvas with pan and zoom functionality
+  - **Color & Stroke Controls**: Customize your drawing style
+  - **Delete**: Remove selected shapes
+  - **Zoom Functionality**: Ctrl+scroll when drag tool is selected
 
-## What's inside?
+- **Real-time Collaboration**:
+  - **Instant Updates**: All drawing actions broadcast to all users in real-time
+  - **Integrated Chat**: Toggle sidebar for text communication while drawing
+  - **Connection Status**: Visual indicator shows WebSocket connection state
+  - **Persistent Storage**: Drawing and chat history persisted to database
 
-This Turborepo includes the following packages/apps:
+- **Responsive Design**:
+  - **Cross-Device Support**: Works on desktop, tablet, and mobile devices
+  - **Touch Support**: Full drawing support via touch events on mobile/tablet
+  - **Adaptive UI**: Responsive toolbar, controls, and layout
+  - **Mobile-Optimized**: Bottom controls on mobile for better usability
 
-### Apps and Packages
+- **User Management**:
+  - **Authentication**: Secure sign-up and login with JWT
+  - **Room Management**: Create, join, and manage drawing rooms
+  - **User Dashboard**: Overview of available rooms
 
-- `docs`: a [Next.js](https://nextjs.org/) app with [Tailwind CSS](https://tailwindcss.com/)
-- `web`: another [Next.js](https://nextjs.org/) app with [Tailwind CSS](https://tailwindcss.com/)
-- `ui`: a stub React component library with [Tailwind CSS](https://tailwindcss.com/) shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+## Tech Stack
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+- **Frontend**:
+  - **Next.js 15**: App Router for modern React architecture
+  - **React 19**: Latest React features
+  - **TypeScript**: Full type safety
+  - **Tailwind CSS**: Responsive styling
+  - **HTML5 Canvas API**: Custom drawing implementation
+  - **Lucide React**: UI icons
 
-### Building packages/ui
+- **Backend**:
+  - **WebSocket Server**: Real-time communication for drawing and chat
+  - **Express REST API**: Authentication and data persistence
+  - **Prisma ORM**: Type-safe database access
+  - **PostgreSQL**: Relational database storage
+  - **JWT**: Secure authentication
 
-This example is set up to produce compiled styles for `ui` components into the `dist` directory. The component `.tsx` files are consumed by the Next.js apps directly using `transpilePackages` in `next.config.ts`. This was chosen for several reasons:
+- **Infrastructure**:
+  - **Turborepo**: Monorepo management
+  - **pnpm**: Fast, disk-efficient package manager
+  - **Shared Packages**: Types, config, and UI components
 
-- Make sharing one `tailwind.config.ts` to apps and packages as easy as possible.
-- Make package compilation simple by only depending on the Next.js Compiler and `tailwindcss`.
-- Ensure Tailwind classes do not overwrite each other. The `ui` package uses a `ui-` prefix for it's classes.
-- Maintain clear package export boundaries.
+## Project Structure
 
-Another option is to consume `packages/ui` directly from source without building. If using this option, you will need to update the `tailwind.config.ts` in your apps to be aware of your package locations, so it can find all usages of the `tailwindcss` class names for CSS compilation.
+The project is organized as a Turborepo monorepo with the following components:
 
-For example, in [tailwind.config.ts](packages/tailwind-config/tailwind.config.ts):
+### Apps
 
-```js
-  content: [
-    // app content
-    `src/**/*.{js,ts,jsx,tsx}`,
-    // include packages if not transpiling
-    "../../packages/ui/*.{js,ts,jsx,tsx}",
-  ],
-```
+- `web`: Next.js frontend application
+  - `app`: Next.js App Router pages
+  - `components`: React components for UI
+  - `draw`: Canvas and drawing logic
+  - `contexts`: React context providers
 
-If you choose this strategy, you can remove the `tailwindcss` and `autoprefixer` dependencies from the `ui` package.
+- `ws-backend`: WebSocket server for real-time features
+  - Handles drawing broadcasts
+  - Manages chat messaging
+  - Tracks room participation
 
-### Utilities
+- `http-backend`: Express REST API
+  - Authentication endpoints
+  - Room management
+  - Chat history
 
-This Turborepo has some additional tools already setup for you:
+### Packages
 
-- [Tailwind CSS](https://tailwindcss.com/) for styles
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+- `database`: Prisma schema and client
+- `shared_zod`: Shared validation schemas
+- `ui`: Reusable UI components
+- Config packages for ESLint, TypeScript, and Tailwind
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18+)
+- pnpm
+- PostgreSQL database
+
+### Installation
+
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/yourusername/draw-app-excalidraw.git
+   cd draw-app-excalidraw
+   ```
+
+2. Install dependencies:
+   ```sh
+   pnpm install
+   ```
+
+3. Configure environment variables:
+   Create a `.env` file in the root directory:
+   ```
+   DATABASE_URL="postgresql://username:password@localhost:5432/excalidraw?schema=public"
+   JWT_SECRET="your-secret-key"
+   NEXT_PUBLIC_BACKEND_HTTP_URL="http://localhost:3001"
+   NEXT_PUBLIC_BACKEND_WS_URL="ws://localhost:3002"
+   ```
+
+4. Set up the database:
+   ```sh
+   cd packages/database
+   pnpm prisma db push
+   ```
+
+5. Start the development servers:
+   ```sh
+   pnpm dev
+   ```
+   This will start:
+   - Frontend: http://localhost:3000
+   - HTTP Backend: http://localhost:3001
+   - WebSocket Backend: http://localhost:3002
+
+## Usage
+
+### Authentication
+1. Register a new account or log in with existing credentials
+2. Access the dashboard after successful authentication
+
+### Drawing Rooms
+1. Create a new drawing room or join an existing one by slug
+2. View a list of your rooms on the dashboard
+
+### Drawing Tools
+- **Select a Tool**: Click on the tool icon in the toolbar
+- **Shapes**: Click and drag to create rectangles and circles
+- **Pencil**: Click and drag to draw freehand
+- **Text**: Click to place text and type your content
+- **Selection**: Click on shapes to select them, then drag to move
+- **Pan/Drag**: Click and drag to move around the canvas
+- **Zoom**: Hold Ctrl and scroll to zoom in/out (when drag tool is selected)
+- **Delete**: Select a shape and click the delete button
+
+### Chat
+- Toggle the chat sidebar using the chat button
+- Type messages and communicate with others in the room
+- Chat history is preserved along with drawings
+
+### Mobile Usage
+- Use touch gestures for drawing and panning
+- UI adapts automatically to smaller screens
+- Controls positioned for easy thumb access on mobile
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add some amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Inspired by [Excalidraw](https://excalidraw.com/)
+- Built with [Next.js](https://nextjs.org/) and [Turborepo](https://turbo.build/repo)
+- Special thanks to all contributors and the open-source community
