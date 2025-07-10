@@ -56,6 +56,12 @@ export function Canvas({ roomId, socket, onBack, isConnected, onToggleChat, room
             };
 
             window.addEventListener('resize', handleResize);
+            
+            // Add touch-action to disable browser handling of touch events
+            // This allows our custom touch handlers to work correctly
+            if (canvasRef.current) {
+                canvasRef.current.style.touchAction = 'none';
+            }
 
             return () => {
                 g.destroy();

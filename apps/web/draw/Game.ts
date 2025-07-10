@@ -43,6 +43,11 @@ export class Game {
         this.canvas.removeEventListener("mouseup", this.mouseUpHandler);
         this.canvas.removeEventListener("mousemove", this.mouseMoveHandler);
         this.canvas.removeEventListener("wheel", this.wheelHandler);
+        
+        // Remove touch event listeners
+        this.canvas.removeEventListener("touchstart", this.touchStartHandler);
+        this.canvas.removeEventListener("touchend", this.touchEndHandler);
+        this.canvas.removeEventListener("touchmove", this.touchMoveHandler);
     }
 
     setTool(tool: Tool) {
@@ -448,6 +453,11 @@ export class Game {
         this.canvas.addEventListener("mouseup", this.mouseUpHandler);
         this.canvas.addEventListener("mousemove", this.mouseMoveHandler);
         this.canvas.addEventListener("wheel", this.wheelHandler);
+        
+        // Add touch event handlers for mobile devices
+        this.canvas.addEventListener("touchstart", this.touchStartHandler);
+        this.canvas.addEventListener("touchend", this.touchEndHandler);
+        this.canvas.addEventListener("touchmove", this.touchMoveHandler);
     }
 
     wheelHandler = (e: WheelEvent) => {
@@ -499,6 +509,213 @@ export class Game {
         } else {
             console.warn("WebSocket not ready for fallback, will retry");
             setTimeout(() => this.tryWebSocketFallback(), 1000);
+        }
+    }
+
+    touchStartHandler = (e: TouchEvent) => {
+        e.preventDefault(); // Prevent scrolling/zooming
+        
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            if (!touch) return; // Safety check
+            
+            this.clicked = true;
+            this.startX = touch.clientX;
+            this.startY = touch.clientY;
+            
+            if (this.selectedTool === "drag") {
+                // For drag tool, remember the current position
+                this.lastDragX = touch.clientX;
+                this.lastDragY = touch.clientY;
+                return;
+            }
+            
+            // Convert screen coordinates to world coordinates
+            const worldX = (this.startX - (this.canvas.width / 2)) / this.zoomLevel + (this.canvas.width / 2) - this.offsetX;
+            const worldY = (this.startY - (this.canvas.height / 2)) / this.zoomLevel + (this.canvas.height / 2) - this.offsetY;
+            
+            // For pencil, start a new shape immediately
+            if (this.selectedTool === "pencil") {
+                const newShape: Shape = {
+                    type: "pencil",
+                    points: [{ 
+                        x: worldX, 
+                        y: worldY 
+                    }],
+                    color: this.selectedColor,
+                    strokeWidth: this.strokeWidth
+                };
+                
+                this.existingShapes.push(newShape);
+            }
+        }
+    }
+
+    touchEndHandler = (e: TouchEvent) => {
+        e.preventDefault(); // Prevent scrolling/zooming
+        
+        if (!this.clicked) return;
+        
+        this.clicked = false;
+        
+        // Need to use the last known position since touchend doesn't have coordinates
+        const width = this.lastDragX - this.startX;
+        const height = this.lastDragY - this.startY;
+        
+        // Convert screen coordinates to world coordinates
+        const worldStartX = (this.startX - (this.canvas.width / 2)) / this.zoomLevel + (this.canvas.width / 2) - this.offsetX;
+        const worldStartY = (this.startY - (this.canvas.height / 2)) / this.zoomLevel + (this.canvas.height / 2) - this.offsetY;
+        const worldWidth = width / this.zoomLevel;
+        const worldHeight = height / this.zoomLevel;
+
+        let shape: Shape | null = null;
+        
+        if (this.selectedTool === "rect") {
+            shape = {
+                type: "rect",
+                x: worldStartX,
+                y: worldStartY,
+                height: worldHeight,
+                width: worldWidth,
+                color: this.selectedColor,
+                strokeWidth: this.strokeWidth
+            };
+        } else if (this.selectedTool === "circle") {
+            const radius = Math.max(Math.abs(worldWidth), Math.abs(worldHeight)) / 2;
+            const centerX = worldStartX + (worldWidth / 2);
+            const centerY = worldStartY + (worldHeight / 2);
+            shape = {
+                type: "circle",
+                radius,
+                centerX,
+                centerY,
+                color: this.selectedColor,
+                strokeWidth: this.strokeWidth
+            };
+        } else if (this.selectedTool === "text") {
+            const text = prompt("Enter text:");
+            if (text) {
+                shape = {
+                    type: "text",
+                    x: worldStartX,
+                    y: worldStartY,
+                    text,
+                    color: this.selectedColor,
+                    fontSize: this.strokeWidth * 10
+                };
+            }
+        }
+
+        if (shape) {
+            // For rect and circle, we add a new shape
+            this.existingShapes.push(shape);
+            this.sendShapeToServer(shape);
+        } else if (this.selectedTool === "pencil") {
+            // For pencil, we've been adding points during touchmove
+            // Send the last shape (the pencil path) to the server
+            const lastShape = this.existingShapes[this.existingShapes.length - 1];
+            if (lastShape && lastShape.type === "pencil") {
+                this.sendShapeToServer(lastShape);
+            }
+        }
+        
+        this.clearCanvas();
+    }
+
+    touchMoveHandler = (e: TouchEvent) => {
+        e.preventDefault(); // Prevent scrolling/zooming
+        
+        if (!this.clicked) return;
+        
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            if (!touch) return; // Safety check
+            
+            const currentX = touch.clientX;
+            const currentY = touch.clientY;
+            
+            if (this.selectedTool === "drag") {
+                // Calculate how much the touch has moved
+                const dx = currentX - this.lastDragX;
+                const dy = currentY - this.lastDragY;
+                
+                // Update the offsets
+                this.offsetX += dx / this.zoomLevel;
+                this.offsetY += dy / this.zoomLevel;
+                
+                // Update the last position
+                this.lastDragX = currentX;
+                this.lastDragY = currentY;
+                
+                // Redraw everything with the new offset
+                this.clearCanvas();
+                return;
+            }
+            
+            if (this.selectedTool === "pencil") {
+                // Convert screen coordinates to world coordinates
+                const worldX = (currentX - (this.canvas.width / 2)) / this.zoomLevel + (this.canvas.width / 2) - this.offsetX;
+                const worldY = (currentY - (this.canvas.height / 2)) / this.zoomLevel + (this.canvas.height / 2) - this.offsetY;
+                
+                // Add point to the current pencil path
+                const lastShape = this.existingShapes[this.existingShapes.length - 1];
+                if (lastShape && lastShape.type === "pencil") {
+                    lastShape.points.push({ 
+                        x: worldX, 
+                        y: worldY 
+                    });
+                    this.clearCanvas();
+                }
+                return;
+            }
+            
+            // For other tools, update last position and show preview
+            this.lastDragX = currentX;
+            this.lastDragY = currentY;
+            this.clearCanvas();
+            
+            // Convert screen coordinates to world coordinates for preview
+            const centerX = this.canvas.width / 2;
+            const centerY = this.canvas.height / 2;
+            
+            // Convert screen coordinates to world coordinates 
+            const worldStartX = (this.startX - centerX) / this.zoomLevel + centerX - this.offsetX;
+            const worldStartY = (this.startY - centerY) / this.zoomLevel + centerY - this.offsetY;
+            const worldCurrentX = (currentX - centerX) / this.zoomLevel + centerX - this.offsetX;
+            const worldCurrentY = (currentY - centerY) / this.zoomLevel + centerY - this.offsetY;
+            const worldWidth = worldCurrentX - worldStartX;
+            const worldHeight = worldCurrentY - worldStartY;
+            
+            // Save context for preview drawing
+            this.ctx.save();
+            
+            // Apply transform for preview
+            this.ctx.translate(centerX, centerY);
+            this.ctx.scale(this.zoomLevel, this.zoomLevel);
+            this.ctx.translate(-centerX, -centerY);
+            
+            this.ctx.strokeStyle = this.selectedColor;
+            this.ctx.lineWidth = this.strokeWidth;
+            
+            if (this.selectedTool === "rect") {
+                this.ctx.strokeRect(
+                    worldStartX + this.offsetX, 
+                    worldStartY + this.offsetY, 
+                    worldWidth, 
+                    worldHeight
+                );   
+            } else if (this.selectedTool === "circle") {
+                const radius = Math.max(Math.abs(worldWidth), Math.abs(worldHeight)) / 2;
+                const worldCenterX = worldStartX + (worldWidth / 2) + this.offsetX;
+                const worldCenterY = worldStartY + (worldHeight / 2) + this.offsetY;
+                this.ctx.beginPath();
+                this.ctx.arc(worldCenterX, worldCenterY, radius, 0, Math.PI * 2);
+                this.ctx.stroke();
+                this.ctx.closePath();                
+            }
+            
+            // Restore context
+            this.ctx.restore();
         }
     }
 }

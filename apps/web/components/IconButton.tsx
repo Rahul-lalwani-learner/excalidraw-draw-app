@@ -14,7 +14,7 @@ export function IconButton({ icon, onClick, activated = false }: IconButtonProps
         activated 
           ? 'bg-blue-500 text-white' 
           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-      } transition-colors`}
+      } transition-colors touch-manipulation active:scale-95`}
     >
       {icon}
     </button>
