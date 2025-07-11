@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Disable the development mode indicator overlay
+  devIndicators: false, 
+  
 };
 
 export default nextConfig;
