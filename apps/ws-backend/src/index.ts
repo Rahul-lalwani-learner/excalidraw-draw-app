@@ -1,7 +1,8 @@
 import { WebSocket, WebSocketServer } from "ws";
 import jwt from "jsonwebtoken"
 import { configDotenv } from "dotenv";
-import {prisma} from "@repo/db"
+import { prisma } from "@repo/db"
+import type { Chat } from "@repo/db"
 configDotenv();
 
 const wss = new WebSocketServer({port: 3002}); 
@@ -463,7 +464,7 @@ async function handleGetShapes(userId: string | null, roomId: string, socket: We
         
         // Extract shapes from messages
         const shapes = roomChats
-            .map(chat => {
+            .map((chat: Chat) => {
                 try {
                     const messageData = JSON.parse(chat.message);
                     return messageData.shape || null;
